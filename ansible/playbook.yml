@@ -1,0 +1,92 @@
+---
+- name: Configure Keycloak Environment
+  hosts: keycloak
+  gather_facts: false
+  become: true
+
+  vars:
+    project_path: /opt/keycloak
+    ansible_python_interpreter: /usr/bin/python3
+    postgres_version: "15-alpine"
+    keycloak_version: "23.0.1"
+    nginx_version: "alpine"
+    POSTGRES_PASSWORD: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
+    KEYCLOAK_ADMIN_PASSWORD: "{{ lookup('env', 'KEYCLOAK_ADMIN_PASSWORD') }}"
+
+  tasks:
+    - name: Update and upgrade system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install Python 3 and Pip
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Set Python 3 as default
+      command: update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+
+    - name: Install required packages
+      apt:
+        name:
+          - containerd
+          - docker.io
+          - docker-compose
+          - python3-docker
+        state: present
+
+    - name: Install new version of docker-compose
+      get_url:
+        url:  "https://github.com/docker/compose/releases/download/v2.30.3/docker-compose-linux-x86_64" 
+        dest: /usr/bin/docker-compose
+        mode: '0755'
+
+    - name: Configure Docker service
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+
+    - name: Create Docker group if not exists
+      command: groupadd docker
+      args:
+        creates: /etc/group
+        warn: false
+
+    - name: Add current user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+
+    - name: Apply group changes to current session
+      raw: newgrp docker   
+
+    - name: Create project directory
+      file:
+        path: "{{ project_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Pull Docker images
+      community.docker.docker_image:
+        name: "{{ item }}"
+        source: pull
+      loop:
+        - "postgres:{{ postgres_version }}"
+        - "keycloak/keycloak:{{ keycloak_version }}"
+        - "nginx:{{ nginx_version }}"
+
+    - name: Start Docker Compose Services 
+      raw: |
+        export POSTGRES_PASSWORD={{ POSTGRES_PASSWORD }}
+        export KEYCLOAK_ADMIN_PASSWORD={{ KEYCLOAK_ADMIN_PASSWORD }}
+        export postgres_version={{ postgres_version }}
+        export keycloak_version={{ keycloak_version }}
+        export nginx_version={{ nginx_version }}
+        cd {{ project_path }} && docker-compose up -d
+      become: true

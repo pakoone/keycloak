@@ -1,0 +1,6 @@
+postgres_version: "15-alpine"
+keycloak_version: "23.0.1"
+nginx_version: "1.27.3"
+postgres_password: "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
+keycloak_admin_user: "admin"
+keycloak_admin_password: "{{ lookup('env', 'KEYCLOAK_ADMIN_PASSWORD') }}"
